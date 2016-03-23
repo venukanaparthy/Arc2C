@@ -15,18 +15,20 @@
         <ServerObjectType>
             <Name>MapServer</Name>
             <ExtensionTypes>
-                <ExtensionType class="com.esri.Arc2CassandraSOI"
-                               id="com.esri.Arc2CassandraSOI"
+                <ExtensionType class="com.esri.Arc2CSOI"
+                               id="com.esri.Arc2CSOI"
                                library="${project.artifactId}-${project.version}.jar">
                     <Name>Arc2CassandraSOI</Name>
                     <DisplayName>Arc2Cassandra SOI</DisplayName>
                     <Description>
-                        Server object to intercept export/image requests and call MemSQL AWS service
+                        Server object to intercept export/image requests and call Cassandra
                     </Description>
-                    <Properties>                    	
+                    <Properties>
+                    	<!--                     	
                         <driver>com.mysql.jdbc.Driver</driver>
                         <connection>jdbc:mysql://ec2-XX-XX-XX-XX.compute-1.amazonaws.com:3306/taxistats</connection>
-                        <username>root</username>                        
+                        <username>root</username>
+                        -->                        
                         <maxWidth>50000.0</maxWidth>                        
                         <host>192.168.75.129</host>
                         <port>9042</port>

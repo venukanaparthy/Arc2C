@@ -12,13 +12,21 @@ import com.esri.arcgis.system.{IObjectConstruct, IPropertySet, IRESTRequestHandl
 import scala.collection.JavaConversions._
 
 import java.net.InetSocketAddress
-import com.datastax.driver.core.Session
-import com.datastax.driver.core.Statement
-import com.datastax.driver.core.ResultSet
-import com.datastax.driver.core.Row
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
+import com.datastax.driver.core.Session;
+import com.datastax.driver.core.Statement;
+import com.datastax.driver.core.querybuilder.QueryBuilder;
+
+import com.esri.core.geometry.Envelope;
+import com.esri.core.geometry.Geometry;
+import com.esri.core.geometry.OperatorImportFromWkt;
+import com.esri.core.geometry.Point;
+import com.esri.core.geometry.WktImportFlags;
 
 
-class Arc2CassandraSOI extends AbstractSOI with IObjectConstruct {
+
+class Arc2CSOI extends AbstractSOI with IObjectConstruct {
 
   val colorMapper = new ColorMapper()  
   var imagePNG: String = _
@@ -28,31 +36,32 @@ class Arc2CassandraSOI extends AbstractSOI with IObjectConstruct {
   var host:String = _
   var keyspace:String = _
   var table:String = _
-  var cClient:CassandraClient = null
-  var results:ResultSet = _
-  var session:Session = null
+  var cClient:CassandraClient = null;
+  var results:ResultSet = null;
+  var session:Session = null;
 
   override def construct(propertySet: IPropertySet): Unit = {
     log.addMessage(3, 200, "Arc2CassandraSOI::construct")
 
     colorMapper.construct()
     
-    host = propertySet.getProperty("host").asInstanceOf[String]
+    /*host = propertySet.getProperty("host").asInstanceOf[String]
     port= propertySet.getProperty("port").asInstanceOf[String].toInt
     keyspace = propertySet.getProperty("keyspace").asInstanceOf[String]
-    table = propertySet.getProperty("table").asInstanceOf[String]
+    table = propertySet.getProperty("table").asInstanceOf[String]*/
     
     maxWidth = propertySet.getProperty("maxWidth").asInstanceOf[String].toDouble
     val json = new JSONObject(Map("Content-Type" -> "image/png"))
     imagePNG = json.toString()
     
-    try {
-    val cnxCfg = new CnxConfig(scala.collection.immutable.List(new InetSocketAddress(host, port)), keyspace, table)
+    /*try {
+     /*val cnxCfg = new CnxConfig(scala.collection.immutable.List(new InetSocketAddress(host, port)), keyspace, table)
     cClient = CassandraClient.DB
-    cClient.connect(cnxCfg)
+    cClient.connect(cnxCfg)*/
    
-    //select pickup_latitude, pickup_longitude from trips where medallion = '8C1EED3FC560AC6AEEB3BD9E7C3753B5';
-    session = cClient.getSession()       
+    //cClient = CassandraClient.DB;
+    //cClient.connect();    
+    //session = cClient.getSession()       
     
     //execute count
     /*var results:ResultSet  = session.execute("select count(*) from vehicle_tracker.trips where medallion = '8C1EED3FC560AC6AEEB3BD9E7C3753B5'");
@@ -67,7 +76,7 @@ class Arc2CassandraSOI extends AbstractSOI with IObjectConstruct {
     } catch {
       case e: Exception =>  log.addMessage(3, 500, "Error:init cassandra connect")
       case _:Throwable => log.addMessage(3, 500, "Error:init cassandra connect generic error")
-    }
+    }*/
   }
 
  
@@ -97,6 +106,9 @@ class Arc2CassandraSOI extends AbstractSOI with IObjectConstruct {
     val bi = new BufferedImage(imgw, imgh, BufferedImage.TYPE_INT_ARGB)
     val g = bi.createGraphics()
     try {
+      
+      var env:Envelope = new Envelope(xmin, ymin, xmax, ymax);
+      
       g.setBackground(Color.WHITE)
       if (xdel < maxWidth && xmin < xmax && ymin < ymax) {
         val minlon = WebMercator.xToLongitude(xmin)
@@ -116,27 +128,55 @@ class Arc2CassandraSOI extends AbstractSOI with IObjectConstruct {
         //val resultSet = preparedStatement.executeQuery
         	                 
         try {
+          
+          cClient = CassandraClient.DB;
+          cClient.connect();
+      
+          session = cClient.getSession(); 
           //execute count
-          var results:ResultSet  = session.execute("select count(*) from vehicle_tracker.trips where medallion = '8C1EED3FC560AC6AEEB3BD9E7C3753B5'");
+          /*var results:ResultSet  = session.execute("select count(*) from vehicle_tracker.trips where medallion = '8C1EED3FC560AC6AEEB3BD9E7C3753B5'");
           var one:Row = results.one;
           val w = one.getInt("count")
           
           //query by id
           results  = session.execute("select pickup_longitude, pickup_latitude from vehicle_tracker.trips where medallion = '8C1EED3FC560AC6AEEB3BD9E7C3753B5'");
+          */
           
+          var results:ResultSet = null;          
+		      var select:Statement = null;
+		      var pnt:Point = null;
+		      
+      		select = QueryBuilder.select().countAll().from("vehicle_tracker", "trips")
+      				.where(QueryBuilder.eq("medallion", "8C1EED3FC560AC6AEEB3BD9E7C3753B5"));
+      		results = session.execute(select);
+      		val one:Row = results.one();
+      		val taxiCount:Long = one.getLong("count")
+      		val w = taxiCount.toInt
+      		log.addMessage(3, 200, "Taxi record count" + w)
+      		
+      		/*select = QueryBuilder.select().all().from("vehicle_tracker", "trips")
+      				.where(QueryBuilder.eq("medallion", "8C1EED3FC560AC6AEEB3BD9E7C3753B5"));*/
+      		
+      		select = QueryBuilder.select().all().from("vehicle_tracker", "trips").limit(50000);
+      		
+      		results = session.execute(select);
+		
           for (row <- results) {
             //val w = row.getInt("cnt") 
             val lon = row.getDouble("pickup_longitude")
             val lat = row.getDouble("pickup_latitude")
-            val fx = (lon - minlon) / dellon
-            val fy = 1.0 - (lat - minlat) / dellat
-            val gx = (imgw * fx).toInt
-            val gy = (imgh * fy).toInt
-            g.setColor(colorMapper.getColor(w.min(255)))
-            g.fillRect(gx - fillw2, gy - fillh2, fillw, fillh)          
+            pnt = createPointFromWKT(lon, lat)	
+            if(env.contains(pnt)){ 
+              val fx = (lon - minlon) / dellon
+              val fy = 1.0 - (lat - minlat) / dellat
+              val gx = (imgw * fx).toInt
+              val gy = (imgh * fy).toInt
+              g.setColor(colorMapper.getColor(w.min(255)))
+              g.fillRect(gx - fillw2, gy - fillh2, fillw, fillh) 
+            }
           }                   
         } catch {
-            case e: Exception =>   log.addMessage(3, 500, "Error:ExportImage")
+            case e: Exception =>   log.addMessage(3, 500, "Error:ExportImage" + e.getStackTraceString)
             case _:Throwable => log.addMessage(3, 500, "Error:ExportImage generic error")
         } finally {
          // resultSet.close()
@@ -157,7 +197,12 @@ class Arc2CassandraSOI extends AbstractSOI with IObjectConstruct {
     ImageIO.write(bi, "PNG", baos)
     baos.toByteArray
   }
-
+  
+  def createPointFromWKT(x:Double, y:Double):Point = {
+     val wktString:String  = s"Point ($x $y)" //String.format("Point (%s %s)", x,y );
+	   val geom:Geometry = OperatorImportFromWkt.local().execute(WktImportFlags.wktImportDefaults, Geometry.Type.Point, wktString, null);	   
+	   return geom.asInstanceOf[Point];
+  }
   
   override def handleRESTRequest(capabilities: String,
                                  resourceName: String,
@@ -170,8 +215,9 @@ class Arc2CassandraSOI extends AbstractSOI with IObjectConstruct {
 
     log.addMessage(3, 200, s"r=$resourceName o=$operationName i=$operationInput f=$outputFormat")
 
-    (operationName, outputFormat) match {      
-      //case ("export", "image") => doExportImage(operationInput, responseProperties)
+    (operationName, outputFormat) match {
+      //case ("getmetadata", _) => doMetadata(operationInput, responseProperties)
+      case ("export", "image") => doExportImage(operationInput, responseProperties)
       case _ =>
         findRestRequestHandlerDelegate() match {
           case inst: IRESTRequestHandler => inst.handleRESTRequest(
