@@ -1,2 +1,2 @@
 # Arc2C
-SOI for query cassandra from Arc
+SOI to query cassandra from Arc (experimental)
